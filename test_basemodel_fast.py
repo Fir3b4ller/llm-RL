@@ -1,7 +1,5 @@
 """
 批量版：用原始 Qwen2.5-0.5B-Instruct 随机作答 n 道 GSM8K 题目，打印每道题及模型回答
-与 test_basemodel.py 唯一的区别是把逐题生成改为按 batch 批量生成（贪心解码结果完全一致），
-用于提高 GPU 利用率、加速跑完。
 """
 import os
 import argparse
@@ -12,7 +10,7 @@ import torch
 from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from GRPO import build_prompt, extract_number, reward_fn
+from utils import build_prompt, extract_number, reward_fn
 
 MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"
 
@@ -20,7 +18,7 @@ MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"
 @torch.no_grad()
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("n", type=int, nargs="?", default=10, help="随机抽取的题目数量")  # 1319
+    parser.add_argument("n", type=int, nargs="?", default=32, help="随机抽取的题目数量")  # 1319
     parser.add_argument("--split", default="test", choices=["train", "test"], help="从哪个划分抽题")
     parser.add_argument("--max_tokens", type=int, default=1024, help="模型回答的最大 token 数")
     parser.add_argument("--temperature", type=float, default=0.0, help="0 表示贪心解码")

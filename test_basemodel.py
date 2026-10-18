@@ -10,7 +10,7 @@ import torch
 from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from GRPO import build_prompt, extract_number, reward_fn  
+from utils import build_prompt, extract_number, reward_fn
 
 MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"
 

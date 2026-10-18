@@ -8,7 +8,7 @@ os.environ["HF_HUB_OFFLINE"] = "1"
 
 from datasets import load_dataset
 from transformers import AutoTokenizer
-from GRPO import build_prompt
+from utils import build_prompt
 
 MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"
 
