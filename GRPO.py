@@ -25,7 +25,7 @@ class Config:
     # GRPO
     group_size: int = 4
     batch_size: int = 4               # rollout = batch_size * group_size
-    mini_batch_size: int = 4          # 训练前向的微批大小，省显存
+    mini_batch_size: int = 4          # Mini-batch size for training forward passes to save memory
     evaluation_batch_size: int = 64
     max_completion_length: int = 1024
     temperature: float = 1
@@ -55,10 +55,10 @@ def grpo_loss(new_logp, old_logp, ref_logp, advantages, mask, kl_coef, epsilon):
     clipped = ratio.clamp(1 - epsilon, 1 + epsilon) * adv
     pg_loss = -torch.minimum(unclipped, clipped)
 
-    delta = ref_logp - new_logp                                  # k3 估计的无偏 KL
+    delta = ref_logp - new_logp                                  # Unbiased k3 estimator of KL divergence
     kl = delta.exp() - delta - 1.0
 
-    clip_count = ((ratio - 1.0).abs() > epsilon).float().mul(mask).sum()  # ratio 落在裁剪区间外的位置
+    clip_count = ((ratio - 1.0).abs() > epsilon).float().mul(mask).sum()  # Ratios outside the clipping range
     return ((pg_loss + kl_coef * kl) * mask).sum(), clip_count
 
 
@@ -126,9 +126,9 @@ def main():
             advantages = (rewards - rewards.mean(dim=1, keepdim=True)) / \
                          (rewards.std(dim=1, keepdim=True) + 1e-4)
             advantages = advantages.reshape(-1)
-            degenerate_frac = (rewards.std(dim=1) < 1e-6).float().mean().item()  # 组内奖励相同: 无优势信号
+            degenerate_frac = (rewards.std(dim=1) < 1e-6).float().mean().item()  # Identical group rewards provide no advantage signal
 
-            mask = comp_mask[:, 1:].float()  # 对齐到 logprob 位置
+            mask = comp_mask[:, 1:].float()  # Align with log-probability positions
             total_tokens = mask.sum()
             n = output_ids.shape[0]
             old_chunks, ref_chunks = [], []
@@ -141,7 +141,7 @@ def main():
             old_logp = torch.cat(old_chunks)
             ref_logp = torch.cat(ref_chunks)
 
-            # 微批前向 + 反向
+            # Mini-batched forward and backward passes
             optimizer.zero_grad()
             loss_sum = clip_count = 0.0
             for mb in range(0, n, cfg.mini_batch_size):

@@ -23,12 +23,12 @@ FEWSHOT_PREFIX = [
 
 
 def normalize_answer(text: str) -> str:
-    """GSM8K 答案做归一化，避免1,000和1000被判成不同。"""
+    """The answers are normalized to avoid treating 1,000 and 1000 as different."""
     return text.replace(",", "")
 
 
 def extract_number(text: str):
-    """从文本中抽取数字答案：取 '####' 后第一个数"""
+    """Extract the numerical answer from the text: Take the first number after '####' """
     if "####" in text:
         text = text.split("####")[-1]
     nums = re.findall(r"-?[\d,]+(?:\.\d+)?", text)
@@ -36,7 +36,7 @@ def extract_number(text: str):
 
 
 def reward_fn(completion: str, gold: str) -> float:
-    """两边答案归一化后完全一致得 1.0，否则 0.0。"""
+    """if the answers are exactly the same, the score is 1.0; otherwise 0.0"""
     pred = extract_number(completion)
     return 1.0 if pred is not None and normalize_answer(pred) == normalize_answer(gold) else 0.0
 
@@ -48,8 +48,8 @@ def build_prompt(tokenizer, question: str) -> str:
 
 @torch.no_grad()
 def rollouts(model, tokenizer, prompt_texts, cfg, device):
-    """对每个 prompt 采样 G 条 completion"""
-    model.config.use_cache = True                                # 生成时开启 KV cache
+    """Sample completions for each prompt"""
+    model.config.use_cache = True                                # Enable KV cache during generation
     prompt_tokens = tokenizer(prompt_texts, return_tensors="pt", padding=True, padding_side="left",
                     add_special_tokens=False,)
     prompt_len = prompt_tokens.input_ids.shape[1]
@@ -62,11 +62,11 @@ def rollouts(model, tokenizer, prompt_texts, cfg, device):
         do_sample=True, temperature=cfg.temperature, top_p=cfg.top_p,
         pad_token_id=tokenizer.pad_token_id,
     )
-    model.config.use_cache = False                               # 训练时关闭
+    model.config.use_cache = False                               # Turn off during training
 
     attention_mask = (output != tokenizer.pad_token_id).long()
     completion_mask = attention_mask.clone()
-    completion_mask[:, :prompt_len] = 0                          # 只对生成部分算 loss
+    completion_mask[:, :prompt_len] = 0                          # Only calculate the loss for the generated part
     completions = [
         tokenizer.decode(output[i, prompt_len:], skip_special_tokens=True)
         for i in range(output.shape[0])
@@ -75,7 +75,7 @@ def rollouts(model, tokenizer, prompt_texts, cfg, device):
 
 
 def token_logprobs(model, input_ids, attention_mask):
-    """近似计算softmax，省显存"""
+    """Compute log probabilities via log-sum-exp to reduce memory usage."""
     logits = model(input_ids, attention_mask=attention_mask).logits[:, :-1, :]
     targets = input_ids[:, 1:]
     gathered = logits.gather(-1, targets.unsqueeze(-1)).squeeze(-1)

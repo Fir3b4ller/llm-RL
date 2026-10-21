@@ -25,13 +25,13 @@ class Config:
     # GSPO
     group_size: int = 4
     batch_size: int = 4               # rollout = batch_size * group_size
-    mini_batch_size: int = 4          # 训练前向的微批大小，省显存
+    mini_batch_size: int = 4          # Mini-batch size for training forward passes to save memory
     evaluation_batch_size: int = 64
     max_completion_length: int = 1024
     temperature: float = 1
     top_p: float = 1
-    epsilon_low: float = 3e-4         # Clip下界
-    epsilon_high: float = 4e-4        # Clip上界
+    epsilon_low: float = 3e-4         # Lower clipping bound
+    epsilon_high: float = 4e-4        # Upper clipping bound
     lr: float = 1e-5
     weight_decay: float = 0.0
     grad_clip: float = 1.0
@@ -49,9 +49,9 @@ class Config:
 
 
 def gspo_loss(new_logp, old_logp, advantages, mask, epsilon_low, epsilon_high):
-    """序列级重要性比率"""
+    """Compute the sequence-level importance ratio."""
     seq_len = mask.sum(dim=1)
-    ratio = ((new_logp - old_logp) * mask).sum(dim=1).div(seq_len).exp()   # 序列级比率
+    ratio = ((new_logp - old_logp) * mask).sum(dim=1).div(seq_len).exp()   # Sequence-level ratio
     unclipped = ratio * advantages
     clipped = ratio.clamp(1 - epsilon_low, 1 + epsilon_high) * advantages
     pg_loss = -torch.minimum(unclipped, clipped)
@@ -127,9 +127,9 @@ def main():
         advantages = (rewards - rewards.mean(dim=1, keepdim=True)) / \
                      (rewards.std(dim=1, keepdim=True) + 1e-4)
         advantages = advantages.reshape(-1)
-        degenerate_frac = (rewards.std(dim=1) < 1e-6).float().mean().item()  # 组内奖励相同: 无优势信号
+        degenerate_frac = (rewards.std(dim=1) < 1e-6).float().mean().item()  # Identical group rewards provide no advantage signal
 
-        mask = comp_mask[:, 1:].float()  # 对齐到 logprob 位置
+        mask = comp_mask[:, 1:].float()  # Align with log-probability positions
         n_seqs = output_ids.shape[0]
         old_chunks = []
         with torch.no_grad():
@@ -138,7 +138,7 @@ def main():
                 old_chunks.append(token_logprobs(model, output_ids[sl], attn_mask[sl]))
         old_logp = torch.cat(old_chunks)
 
-        # 微批前向 + 反向
+        # Mini-batched forward and backward passes
         optimizer.zero_grad()
         loss_sum = clip_count = 0.0
         for mb in range(0, n_seqs, cfg.mini_batch_size):

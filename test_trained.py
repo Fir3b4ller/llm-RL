@@ -1,5 +1,5 @@
 """
-用训练好的 LoRA 模型随机作答 n 道 GSM8K 题目
+Evaluate a trained LoRA model on n randomly selected GSM8K questions.
 """
 import os
 import argparse
@@ -17,12 +17,12 @@ from utils import build_prompt, extract_number, reward_fn
 @torch.no_grad()
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("n", type=int, nargs="?", default=32, help="随机抽取的题目数量")
-    parser.add_argument("--adapter", default="grpo_gsm8k_lora", help="训练保存的 LoRA 目录")
-    parser.add_argument("--split", default="test", choices=["train", "test"], help="从哪个划分抽题")
-    parser.add_argument("--max_tokens", type=int, default=1024, help="模型回答的最大 token 数")
+    parser.add_argument("n", type=int, nargs="?", default=32, help="Number of questions to sample")
+    parser.add_argument("--adapter", default="grpo_gsm8k_lora", help="Directory containing the trained LoRA adapter")
+    parser.add_argument("--split", default="test", choices=["train", "test"], help="Dataset split to sample from")
+    parser.add_argument("--max_tokens", type=int, default=1024, help="Maximum number of tokens in each response")
     parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--temperature", type=float, default=0.0, help="0 表示贪心解码")
+    parser.add_argument("--temperature", type=float, default=0.0, help="Use 0 for greedy decoding")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
@@ -68,13 +68,13 @@ def main():
             correct += int(ok)
 
             print("=" * 90)
-            print(f"[{i}/{args.n}] 题目: {question}")
-            print(f"标准答案: {gold}")
-            print(f"模型回答: {answer}")
-            print(f"是否正确: {'正确' if ok else '错误'}")
+            print(f"[{i}/{args.n}] Question: {question}")
+            print(f"Reference answer: {gold}")
+            print(f"Model response: {answer}")
+            print(f"Result: {'Correct' if ok else 'Incorrect'}")
 
     print("=" * 90)
-    print(f"共 {args.n} 题，正确 {correct} 题，准确率 {correct / args.n:.2%}")
+    print(f"Total: {args.n} questions, {correct} correct, accuracy: {correct / args.n:.2%}")
 
 
 if __name__ == "__main__":

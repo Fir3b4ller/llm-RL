@@ -25,14 +25,14 @@ class Config:
     # DAPO
     group_size: int = 4
     batch_size: int = 4
-    mini_batch_size: int = 4          # 训练前向的微批大小，省显存
+    mini_batch_size: int = 4          # Mini-batch size for training forward passes to save memory
     evaluation_batch_size: int = 64
     max_completion_length: int = 512
     temperature: float = 1
     top_p: float = 1
-    epsilon_low: float = 0.2          # Clip下界
-    epsilon_high: float = 0.28        # Clip上界
-    overlong_cache_length: int = 128  # 线性惩罚
+    epsilon_low: float = 0.2          # Lower clipping bound
+    epsilon_high: float = 0.28        # Upper clipping bound
+    overlong_cache_length: int = 128  # Linear penalty range
     lr: float = 1e-5
     weight_decay: float = 0.0
     grad_clip: float = 1.0
@@ -50,14 +50,14 @@ class Config:
 
 
 def overlong_penalty(lengths, max_len, cache_len):
-    """DAPO 溢出长度线性软惩罚"""
+    """Apply DAPO's linear soft penalty to overlong completions."""
     soft = max_len - cache_len
     return torch.clamp((soft - lengths).float() / cache_len, min=-1.0, max=0.0)
 
 
 @torch.no_grad()
 def dynamic_rollout(model, tokenizer, questions, golds, order, pointer, cfg, device):
-    """DAPO 动态采样：持续生成、丢弃组内原始对错全相同的退化组，直到凑齐 batch_size 个有效组。"""
+    """Generate samples until batch_size non-degenerate groups have been collected."""
     group_size = cfg.group_size
     kept, sampled, dropped = [], 0, 0                 # kept: (output_ids, attn, comp_mask, rewards)
     while len(kept) < cfg.batch_size and pointer < len(order):
@@ -78,7 +78,7 @@ def dynamic_rollout(model, tokenizer, questions, golds, order, pointer, cfg, dev
         correct_count = correct.sum(dim=1)
         for b in range(len(chunk)):
             sampled += 1
-            if correct_count[b] == 0 or correct_count[b] == group_size:  # 组内全错或全对才丢弃
+            if correct_count[b] == 0 or correct_count[b] == group_size:  # Discard groups that are entirely incorrect or correct
                 dropped += 1
                 continue
             sl = slice(b * group_size, (b + 1) * group_size)
@@ -148,12 +148,12 @@ def main():
         # dynamic rollout
         kept, sampled, dropped, pointer = dynamic_rollout(
             model, tokenizer, train_question, train_gold, order, pointer, cfg, device)
-        degenerate_frac = dropped / max(sampled, 1)          # 被丢弃的退化组比例
+        degenerate_frac = dropped / max(sampled, 1)          # Fraction of sampled groups discarded as degenerate
         progress.update(1)
         if not kept:
             continue
 
-        max_len = max(k[0].shape[1] for k in kept)           # 不同 chunk 的序列长度不同，右侧补齐后再拼接
+        max_len = max(k[0].shape[1] for k in kept)           # Right-pad chunks of different lengths before concatenation
         pad = torch.nn.functional.pad
         output_ids = torch.cat([pad(k[0], (0, max_len - k[0].shape[1])) for k in kept])
         attn_mask = torch.cat([pad(k[1], (0, max_len - k[1].shape[1])) for k in kept])
@@ -163,7 +163,7 @@ def main():
                      (rewards.std(dim=1, keepdim=True) + 1e-4)
         advantages = advantages.reshape(-1)
 
-        mask = comp_mask[:, 1:].float()                      # 对齐到 logprob 位置
+        mask = comp_mask[:, 1:].float()                      # Align with log-probability positions
         total_tokens = mask.sum()
         n = output_ids.shape[0]
         old_chunks = []
@@ -173,7 +173,7 @@ def main():
                 old_chunks.append(token_logprobs(model, output_ids[sl], attn_mask[sl]))
         old_logp = torch.cat(old_chunks)
 
-        # 微批前向 + 反向
+        # Mini-batched forward and backward passes
         optimizer.zero_grad()
         loss_sum = clip_count = 0.0
         for mb in range(0, n, cfg.mini_batch_size):
