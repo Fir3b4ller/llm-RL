@@ -1,7 +1,7 @@
 import os
 import random
 from dataclasses import dataclass, field, asdict
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+os.environ["HF_HUB_OFFLINE"] = "1"
 
 import torch
 from datasets import load_dataset
@@ -93,7 +93,7 @@ def dapo_loss(new_logp, old_logp, advantages, mask, epsilon_low, epsilon_high):
     clipped = ratio.clamp(1 - epsilon_low, 1 + epsilon_high) * adv
     pg_loss = -torch.minimum(unclipped, clipped)
 
-    clip_count = ((ratio < 1 - epsilon_low) | (ratio > 1 + epsilon_high)).float().mul(mask).sum()
+    clip_count = (clipped.detach() < unclipped.detach()).float().mul(mask).sum()
     return (pg_loss * mask).sum(), clip_count
 
 
@@ -153,9 +153,11 @@ def main():
         if not kept:
             continue
 
-        output_ids = torch.cat([k[0] for k in kept])
-        attn_mask = torch.cat([k[1] for k in kept])
-        comp_mask = torch.cat([k[2] for k in kept])
+        max_len = max(k[0].shape[1] for k in kept)           # 不同 chunk 的序列长度不同，右侧补齐后再拼接
+        pad = torch.nn.functional.pad
+        output_ids = torch.cat([pad(k[0], (0, max_len - k[0].shape[1])) for k in kept])
+        attn_mask = torch.cat([pad(k[1], (0, max_len - k[1].shape[1])) for k in kept])
+        comp_mask = torch.cat([pad(k[2], (0, max_len - k[2].shape[1])) for k in kept])
         rewards = torch.stack([k[3] for k in kept])          # (batch_size, group_size)
         advantages = (rewards - rewards.mean(dim=1, keepdim=True)) / \
                      (rewards.std(dim=1, keepdim=True) + 1e-4)

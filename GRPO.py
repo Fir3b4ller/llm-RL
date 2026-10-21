@@ -1,7 +1,7 @@
 import os
 import random
 from dataclasses import dataclass, field, asdict
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+os.environ["HF_HUB_OFFLINE"] = "1"
 
 import torch
 from datasets import load_dataset

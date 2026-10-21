@@ -1,0 +1,1 @@
+final eval accuracy on full test set = 0.471569
