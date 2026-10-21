@@ -28,7 +28,7 @@ def normalize_answer(text: str) -> str:
 
 
 def extract_number(text: str):
-    """从文本中抽取数字答案：优先取 '####' 后第一个数，否则取第一个数字。"""
+    """从文本中抽取数字答案：取 '####' 后第一个数"""
     if "####" in text:
         text = text.split("####")[-1]
     nums = re.findall(r"-?[\d,]+(?:\.\d+)?", text)
